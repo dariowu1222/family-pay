@@ -1,0 +1,27 @@
+{
+  "name": "family-pay",
+  "version": "0.1.0",
+  "description": "LINE Bot + LIFF 家庭代墊系統 PoC",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "generate-richmenu": "node richmenu/generate-png.js",
+    "upload-richmenu": "npm run generate-richmenu && node richmenu/upload.js"
+  },
+  "keywords": [
+    "line-bot",
+    "liff",
+    "express",
+    "family-pay"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@line/bot-sdk": "^10.2.0",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "sharp": "^0.34.4"
+  }
+}

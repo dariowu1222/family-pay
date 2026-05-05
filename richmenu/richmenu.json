@@ -1,0 +1,58 @@
+{
+  "size": {
+    "width": 2500,
+    "height": 1686
+  },
+  "selected": true,
+  "name": "family-pay-richmenu",
+  "chatBarText": "家庭功能",
+  "areas": [
+    {
+      "bounds": { "x": 0, "y": 0, "width": 833, "height": 843 },
+      "action": {
+        "type": "uri",
+        "uri": "https://liff.line.me/{LIFF_ID}"
+      }
+    },
+    {
+      "bounds": { "x": 833, "y": 0, "width": 834, "height": 843 },
+      "action": {
+        "type": "postback",
+        "data": "FEATURE_SHOPPING_LIST",
+        "displayText": "採買清單"
+      }
+    },
+    {
+      "bounds": { "x": 1667, "y": 0, "width": 833, "height": 843 },
+      "action": {
+        "type": "postback",
+        "data": "FEATURE_CALENDAR",
+        "displayText": "家庭行事曆"
+      }
+    },
+    {
+      "bounds": { "x": 0, "y": 843, "width": 833, "height": 843 },
+      "action": {
+        "type": "postback",
+        "data": "FEATURE_BILL_REMINDER",
+        "displayText": "帳單提醒"
+      }
+    },
+    {
+      "bounds": { "x": 833, "y": 843, "width": 834, "height": 843 },
+      "action": {
+        "type": "postback",
+        "data": "FEATURE_TASK",
+        "displayText": "家庭任務"
+      }
+    },
+    {
+      "bounds": { "x": 1667, "y": 843, "width": 833, "height": 843 },
+      "action": {
+        "type": "postback",
+        "data": "FEATURE_SETTING",
+        "displayText": "家庭設定"
+      }
+    }
+  ]
+}
