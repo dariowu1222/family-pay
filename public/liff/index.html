@@ -94,7 +94,7 @@
         const pay = PAY_METHOD_MAP[r.pay_method] || { label: r.pay_method || '—' };
         const li = document.createElement('li');
         li.className = 'card';
-        const date = (r.record_date || '').slice(5).replace('-', '/');
+        const date = (r.record_date || '').slice(5, 10).replace('-', '/');
         const note = r.note ? ` · 「${r.note}」` : '';
         li.innerHTML = `
           <div class="card-row">
