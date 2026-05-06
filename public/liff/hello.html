@@ -24,6 +24,11 @@
       margin-top: 0;
       font-size: 28px;
     }
+    h2 {
+      font-size: 18px;
+      margin: 20px 0 8px;
+      color: #444;
+    }
     p {
       line-height: 1.6;
       font-size: 16px;
@@ -37,6 +42,44 @@
     }
     .error { background: #ffe8e8; color: #b00020; }
     .success { background: #e8fff1; color: #0b6b35; }
+    .token-box {
+      margin-top: 16px;
+      padding: 10px;
+      background: #fafafa;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 11px;
+      word-break: break-all;
+      max-height: 100px;
+      overflow-y: auto;
+    }
+    button {
+      display: block;
+      width: 100%;
+      margin-top: 8px;
+      padding: 10px;
+      background: #06c755;
+      color: #fff;
+      border: 0;
+      border-radius: 6px;
+      font-size: 15px;
+      cursor: pointer;
+    }
+    button:active { background: #048b3d; }
+    button.secondary { background: #555; }
+    pre.result {
+      margin-top: 8px;
+      padding: 10px;
+      background: #1e1e1e;
+      color: #d4d4d4;
+      border-radius: 6px;
+      font-size: 12px;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 200px;
+      overflow-y: auto;
+    }
   </style>
 </head>
 <body>
@@ -44,28 +87,67 @@
     <h1>家庭代墊</h1>
     <p id="helloText">LIFF 初始化中...</p>
     <div id="status" class="status">Loading...</div>
+
+    <h2>🔑 LIFF ID Token（測試用）</h2>
+    <div id="tokenBox" class="token-box">尚未取得</div>
+    <button id="copyTokenBtn">複製 Token</button>
+
+    <h2>🧪 API 自我測試</h2>
+    <button id="testMeBtn">測 GET /api/family-pay/me</button>
+    <button id="testSummaryBtn" class="secondary">測 GET /monthly-summary?month=2026-05</button>
+    <pre id="apiResult" class="result">尚未測試</pre>
   </div>
 
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script>
     const helloText = document.getElementById('helloText');
     const statusBox = document.getElementById('status');
+    const tokenBox = document.getElementById('tokenBox');
+    const copyTokenBtn = document.getElementById('copyTokenBtn');
+    const testMeBtn = document.getElementById('testMeBtn');
+    const testSummaryBtn = document.getElementById('testSummaryBtn');
+    const apiResult = document.getElementById('apiResult');
+
+    let idToken = null;
 
     function setStatus(message, type) {
       statusBox.textContent = message;
       statusBox.className = 'status' + (type ? ' ' + type : '');
     }
 
+    async function callApi(path) {
+      apiResult.textContent = '呼叫 ' + path + ' ...';
+      try {
+        const res = await fetch(path, {
+          headers: { 'Authorization': 'Bearer ' + idToken }
+        });
+        const data = await res.json();
+        apiResult.textContent = res.status + ' ' + res.statusText + '\n\n' + JSON.stringify(data, null, 2);
+      } catch (err) {
+        apiResult.textContent = 'ERROR: ' + err.message;
+      }
+    }
+
+    copyTokenBtn.addEventListener('click', async () => {
+      if (!idToken) return;
+      try {
+        await navigator.clipboard.writeText(idToken);
+        copyTokenBtn.textContent = '✅ 已複製';
+        setTimeout(() => { copyTokenBtn.textContent = '複製 Token'; }, 1500);
+      } catch (err) {
+        copyTokenBtn.textContent = '複製失敗，請手動長按選取上方 token';
+      }
+    });
+
+    testMeBtn.addEventListener('click', () => callApi('/api/family-pay/me'));
+    testSummaryBtn.addEventListener('click', () => callApi('/api/family-pay/monthly-summary?month=2026-05'));
+
     async function main() {
       try {
         const configResponse = await fetch('/api/config');
-        if (!configResponse.ok) {
-          throw new Error('取得 LIFF 設定失敗');
-        }
+        if (!configResponse.ok) throw new Error('取得 LIFF 設定失敗');
         const config = await configResponse.json();
-        if (!config.liffId) {
-          throw new Error('LIFF_ID 尚未設定，請確認環境變數');
-        }
+        if (!config.liffId) throw new Error('LIFF_ID 尚未設定');
 
         await liff.init({ liffId: config.liffId });
 
@@ -77,6 +159,15 @@
         const profile = await liff.getProfile();
         helloText.textContent = 'Hello, ' + profile.displayName;
         setStatus('LIFF 初始化成功', 'success');
+
+        // 取 ID Token
+        idToken = liff.getIDToken();
+        if (idToken) {
+          tokenBox.textContent = idToken;
+          console.log('LIFF_ID_TOKEN:', idToken);
+        } else {
+          tokenBox.textContent = '⚠️ liff.getIDToken() 回傳 null';
+        }
       } catch (error) {
         console.error(error);
         helloText.textContent = 'LIFF 初始化失敗';
