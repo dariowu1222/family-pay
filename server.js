@@ -6,6 +6,8 @@ import { fileURLToPath } from 'url';
 import webhookRouter from './routes/webhook.js';
 import liffRouter from './routes/liff.js';
 import configRouter from './routes/config.js';
+import familyPayRouter from './routes/familyPay.js';
+import './db.js'; // 啟動時觸發 DB 連線測試
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -23,6 +25,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use('/api/config', configRouter);
+app.use('/api/family-pay', familyPayRouter);
 app.use('/liff', liffRouter);
 app.use(express.static(path.join(__dirname, 'public')));
 
