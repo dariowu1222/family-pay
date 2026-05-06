@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>吳家小管家 · 本月代墊</title>
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    .total-block{text-align:center;padding:8px 0 16px}
+    .total-label{color:var(--color-text-muted);font-size:14px;margin-bottom:4px}
+    .total-amount{font-size:48px;font-weight:700;color:var(--color-text);
+      transition:opacity .2s}
+    .total-amount.fading{opacity:0}
+    .chart-wrap{display:flex;justify-content:center;margin:8px 0 16px}
+    .chart-container{width:280px;height:280px;position:relative}
+    .legend{list-style:none;padding:0;margin:0 0 16px;display:flex;flex-wrap:wrap;
+      gap:6px;justify-content:center}
+    .legend li{display:inline-flex;align-items:center;font-size:13px;
+      padding:4px 10px;border-radius:14px;background:var(--color-bg-muted)}
+    .legend .dot{width:8px;height:8px;border-radius:50%;display:inline-block;
+      margin-right:6px}
+    .month-switch{display:flex;align-items:center;gap:8px}
+    .month-switch button{font-size:18px}
+    .month-switch button:disabled{opacity:.3;cursor:not-allowed}
+    .month-label{font-size:16px;font-weight:600;min-width:84px;text-align:center}
+    .record-list{list-style:none;padding:0;margin:0}
+    .record-cat{font-weight:600}
+    .record-amt{font-weight:700}
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="page-header">
+      <div class="month-switch">
+        <button id="prevBtn" class="icon-btn" aria-label="上個月">◀</button>
+        <span id="monthLabel" class="month-label">----</span>
+        <button id="nextBtn" class="icon-btn" aria-label="下個月">▶</button>
+      </div>
+      <button id="claimBtn" class="icon-btn" aria-label="產生請款">📋</button>
+    </header>
+
+    <div class="total-block">
+      <div class="total-label">本月代墊總額</div>
+      <div id="totalAmount" class="total-amount">載入中...</div>
+    </div>
+
+    <div class="chart-wrap">
+      <div class="chart-container">
+        <canvas id="chart"></canvas>
+      </div>
+    </div>
+    <ul id="legend" class="legend"></ul>
+
+    <div class="section-title">本月明細 <span id="recordCount"></span></div>
+    <ul id="recordList" class="record-list"></ul>
+    <div id="emptyState" class="empty-state" style="display:none">
+      <span class="emoji">🪺</span>
+      本月還沒記帳，點右下「+」開始
+    </div>
+  </div>
+
+  <button class="fab" id="addBtn" aria-label="新增代墊">+</button>
+
+  <script type="module">
+    import {
+      initLiff, apiGet, formatNT, currentMonth, prevMonth, nextMonth,
+      CATEGORY_MAP, PAY_METHOD_MAP, CATEGORY, CATEGORY_COLORS,
+      showToast, goto,
+    } from './app.js';
+
+    let currentYM = currentMonth();
+    let chart = null;
+
+    const $ = (id) => document.getElementById(id);
+
+    function renderMonthLabel() {
+      $('monthLabel').textContent = currentYM;
+      $('nextBtn').disabled = (currentYM === currentMonth());
+    }
+
+    function renderRecords(records) {
+      const list = $('recordList');
+      const empty = $('emptyState');
+      list.innerHTML = '';
+      $('recordCount').textContent = records.length ? `（${records.length} 筆）` : '';
+      if (!records.length) {
+        empty.style.display = 'block';
+        return;
+      }
+      empty.style.display = 'none';
+      records.forEach(r => {
+        const cat = CATEGORY_MAP[r.category] || { emoji: '❓', label: r.category };
+        const pay = PAY_METHOD_MAP[r.pay_method] || { label: r.pay_method || '—' };
+        const li = document.createElement('li');
+        li.className = 'card';
+        const date = (r.record_date || '').slice(5).replace('-', '/');
+        const note = r.note ? ` · 「${r.note}」` : '';
+        li.innerHTML = `
+          <div class="card-row">
+            <span class="record-cat">${cat.emoji} ${cat.label}</span>
+            <span class="record-amt">${formatNT(r.amount)}</span>
+          </div>
+          <div class="card-meta">${date} · ${pay.label}${note}</div>`;
+        list.appendChild(li);
+      });
+    }
+
+    function renderChart(byCategory) {
+      const ctx = $('chart').getContext('2d');
+      // 依固定 CATEGORY 順序組資料（缺的補 0）
+      const labels = CATEGORY.map(c => `${c.emoji} ${c.label}`);
+      const dataMap = Object.fromEntries((byCategory || []).map(b => [b.category, Number(b.amount)]));
+      const data = CATEGORY.map(c => dataMap[c.key] || 0);
+      const hasData = data.some(v => v > 0);
+
+      if (chart) { chart.destroy(); chart = null; }
+      if (!hasData) return;
+
+      chart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels,
+          datasets: [{
+            data,
+            backgroundColor: CATEGORY_COLORS,
+            borderWidth: 0,
+          }],
+        },
+        options: {
+          cutout: '60%',
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => `${ctx.label}: ${formatNT(ctx.parsed)}`,
+              },
+            },
+          },
+          animation: { duration: 400 },
+        },
+      });
+    }
+
+    function renderLegend(byCategory) {
+      const ul = $('legend');
+      ul.innerHTML = '';
+      const dataMap = Object.fromEntries((byCategory || []).map(b => [b.category, Number(b.amount)]));
+      CATEGORY.forEach((c, i) => {
+        const amt = dataMap[c.key] || 0;
+        if (amt <= 0) return;
+        const li = document.createElement('li');
+        li.innerHTML = `<span class="dot" style="background:${CATEGORY_COLORS[i]}"></span>${c.emoji} ${c.label} ${formatNT(amt)}`;
+        ul.appendChild(li);
+      });
+    }
+
+    async function load() {
+      renderMonthLabel();
+      const totalEl = $('totalAmount');
+      totalEl.classList.add('fading');
+      try {
+        const [summary, records] = await Promise.all([
+          apiGet(`/api/family-pay/monthly-summary?month=${currentYM}`),
+          apiGet(`/api/family-pay/records?month=${currentYM}`),
+        ]);
+        totalEl.textContent = formatNT(summary?.total_amount ?? summary?.total ?? 0);
+        renderChart(summary?.by_category || []);
+        renderLegend(summary?.by_category || []);
+        renderRecords(records || []);
+      } catch (e) {
+        totalEl.textContent = '—';
+        showToast(e.message || '載入失敗', 'error');
+      } finally {
+        requestAnimationFrame(() => totalEl.classList.remove('fading'));
+      }
+    }
+
+    $('prevBtn').addEventListener('click', () => {
+      currentYM = prevMonth(currentYM);
+      load();
+    });
+    $('nextBtn').addEventListener('click', () => {
+      if (currentYM === currentMonth()) return;
+      currentYM = nextMonth(currentYM);
+      load();
+    });
+    $('claimBtn').addEventListener('click', () => {
+      goto(`claim.html?month=${currentYM}`);
+    });
+    $('addBtn').addEventListener('click', () => goto('add.html'));
+
+    (async () => {
+      try {
+        await initLiff();
+        await load();
+      } catch (e) {
+        $('totalAmount').textContent = '—';
+        showToast(e.message || '初始化失敗', 'error');
+        console.error(e);
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -47,7 +47,8 @@ app.get('/', (req, res) => {
     <h1>Family Pay PoC</h1>
     <p>Server is running.</p>
     <ul>
-      <li><a href="/liff/hello">LIFF Hello Page</a></li>
+      <li><a href="/liff/index.html">LIFF App (P3)</a></li>
+      <li><a href="/liff/hello">LIFF Hello (P1 測試)</a></li>
       <li><a href="/api/config">API Config</a></li>
       <li><a href="/api/health">API Health (DB)</a></li>
     </ul>

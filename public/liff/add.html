@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>新增代墊</title>
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    .field{margin-bottom:16px}
+    .field-label{font-size:13px;color:var(--color-text-muted);margin-bottom:6px;display:block}
+    .save-bar{position:fixed;left:0;right:0;bottom:0;padding:12px 16px;
+      background:#fff;border-top:1px solid var(--color-border);
+      max-width:480px;margin:0 auto}
+    .amount-prefix{position:relative}
+    .amount-prefix .prefix{position:absolute;left:14px;top:50%;
+      transform:translateY(-50%);color:var(--color-text-muted);font-size:18px;font-weight:600}
+    .amount-prefix .input-amount{padding-left:48px}
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="page-header">
+      <button class="icon-btn" id="backBtn" aria-label="返回">←</button>
+      <h1>新增代墊</h1>
+      <span style="width:40px"></span>
+    </header>
+
+    <div class="field">
+      <label class="field-label">金額</label>
+      <div class="amount-prefix">
+        <span class="prefix">NT$</span>
+        <input id="amount" class="input input-amount" type="number"
+               inputmode="decimal" min="0" step="1" placeholder="0">
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="field-label">分類</label>
+      <div id="categoryPicker" class="picker-grid"></div>
+    </div>
+
+    <div class="field">
+      <label class="field-label">付款方式</label>
+      <div id="payMethodPicker" class="picker-grid"></div>
+    </div>
+
+    <div class="field">
+      <label class="field-label">日期</label>
+      <input id="recordDate" class="input" type="date">
+    </div>
+
+    <div class="field">
+      <label class="field-label">備註（選填）</label>
+      <textarea id="note" class="input" placeholder="例如：午餐便當" maxlength="200"></textarea>
+    </div>
+  </div>
+
+  <div class="save-bar">
+    <button id="saveBtn" class="btn btn-primary" disabled>儲存</button>
+  </div>
+
+  <script type="module">
+    import {
+      initLiff, apiPost, formatYMD, showToast, goto,
+      CATEGORY, PAY_METHOD,
+    } from './app.js';
+
+    const $ = (id) => document.getElementById(id);
+    let selectedCategory = null;
+    let selectedPayMethod = null;
+
+    function renderPickers() {
+      const cp = $('categoryPicker');
+      CATEGORY.forEach(c => {
+        const el = document.createElement('div');
+        el.className = 'picker-card';
+        el.dataset.value = c.key;
+        el.innerHTML = `<span class="emoji">${c.emoji}</span>${c.label}`;
+        cp.appendChild(el);
+      });
+      const pp = $('payMethodPicker');
+      PAY_METHOD.forEach(p => {
+        const el = document.createElement('div');
+        el.className = 'picker-card';
+        el.dataset.value = p.key;
+        el.innerHTML = `<span class="emoji">${p.emoji}</span>${p.label}`;
+        pp.appendChild(el);
+      });
+    }
+
+    function bindPicker(containerId, onSelect) {
+      const c = $(containerId);
+      c.addEventListener('click', (e) => {
+        const card = e.target.closest('.picker-card');
+        if (!card) return;
+        [...c.children].forEach(x => x.classList.remove('selected'));
+        card.classList.add('selected');
+        onSelect(card.dataset.value);
+      });
+    }
+
+    function checkValid() {
+      const amt = parseFloat($('amount').value);
+      $('saveBtn').disabled = !(amt > 0 && selectedCategory && selectedPayMethod);
+    }
+
+    async function save() {
+      const amount = parseFloat($('amount').value);
+      const payload = {
+        amount,
+        category: selectedCategory,
+        pay_method: selectedPayMethod,
+        record_date: $('recordDate').value || formatYMD(new Date()),
+        note: $('note').value.trim(),
+      };
+      $('saveBtn').disabled = true;
+      try {
+        await apiPost('/api/family-pay/records', payload);
+        showToast(`✅ 已記錄 ${payload.amount.toLocaleString('en-US')}`, 'success');
+        setTimeout(() => goto('index.html'), 600);
+      } catch (e) {
+        showToast(e.message || '儲存失敗', 'error');
+        $('saveBtn').disabled = false;
+      }
+    }
+
+    renderPickers();
+    bindPicker('categoryPicker', (v) => { selectedCategory = v; checkValid(); });
+    bindPicker('payMethodPicker', (v) => { selectedPayMethod = v; checkValid(); });
+    $('amount').addEventListener('input', checkValid);
+    $('recordDate').value = formatYMD(new Date());
+    $('backBtn').addEventListener('click', () => history.length > 1 ? history.back() : goto('index.html'));
+    $('saveBtn').addEventListener('click', save);
+
+    (async () => {
+      try {
+        await initLiff();
+      } catch (e) {
+        showToast(e.message || '初始化失敗', 'error');
+        console.error(e);
+      }
+    })();
+  </script>
+</body>
+</html>

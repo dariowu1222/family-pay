@@ -39,16 +39,19 @@ router.post('/records', async (req, res) => {
     const { amount, category, pay_method, note, record_date } = req.body || {};
     const { user_id, group_id } = req.user;
 
-    if (amount == null || !category || !record_date) {
-      return res.status(400).json({ ok: false, error: 'amount/category/record_date 必填' });
+    if (amount == null || !category) {
+      return res.status(400).json({ ok: false, error: 'amount/category 必填' });
     }
+
+    // record_date 沒傳 → 預設今天（YYYY-MM-DD）
+    const finalDate = record_date || new Date().toISOString().slice(0, 10);
 
     const result = await pool.query(
       `INSERT INTO family_pay_record
          (group_id, paid_by_user_id, amount, category, pay_method, record_date, note, status)
        VALUES ($1, $2, $3, $4, $5, $6, $7, 'UNSETTLED')
        RETURNING *`,
-      [group_id, user_id, amount, category, pay_method || null, record_date, note || null]
+      [group_id, user_id, amount, category, pay_method || null, finalDate, note || null]
     );
 
     res.json({ ok: true, data: result.rows[0] });

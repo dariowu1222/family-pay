@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>請款預覽</title>
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    .preview{background:#fff;border:1px solid var(--color-border);
+      border-radius:8px;padding:16px;margin-bottom:16px;
+      white-space:pre-wrap;user-select:text;
+      font-family:"Menlo","Consolas","Courier New",monospace;
+      font-size:14px;line-height:1.6;color:var(--color-text);
+      min-height:120px}
+    .preview.loading{color:var(--color-text-muted);font-style:italic}
+    .actions{display:flex;flex-direction:column;gap:10px}
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="page-header">
+      <button class="icon-btn" id="backBtn" aria-label="返回">←</button>
+      <h1 id="title">請款預覽</h1>
+      <span style="width:40px"></span>
+    </header>
+
+    <div class="preview loading" id="preview">載入中...</div>
+
+    <div class="actions">
+      <button id="copyBtn" class="btn btn-secondary" disabled>📋 複製訊息</button>
+      <button id="shareBtn" class="btn btn-primary" disabled>💚 分享到 LINE</button>
+      <button id="paidBtn" class="btn btn-danger" disabled>✅ 標記為已付款</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import {
+      initLiff, apiPost, showToast, showConfirmModal, goto, currentMonth,
+    } from './app.js';
+
+    const $ = (id) => document.getElementById(id);
+    const params = new URLSearchParams(location.search);
+    const month = params.get('month') || currentMonth();
+    $('title').textContent = `${month} 請款`;
+
+    let claimId = null;
+    let messageText = '';
+
+    function setEnabled(enabled) {
+      $('copyBtn').disabled = !enabled;
+      $('shareBtn').disabled = !enabled;
+      $('paidBtn').disabled = !enabled;
+    }
+
+    async function loadClaim() {
+      try {
+        const data = await apiPost('/api/family-pay/claim-message', { month });
+        claimId = data?.claim_id || null;
+        messageText = data?.message || '';
+        const pv = $('preview');
+        pv.classList.remove('loading');
+        pv.textContent = messageText || '本月尚無代墊記錄';
+        setEnabled(!!messageText && !!claimId);
+      } catch (e) {
+        $('preview').classList.remove('loading');
+        $('preview').textContent = '無法載入請款訊息';
+        showToast(e.message || '載入失敗', 'error');
+      }
+    }
+
+    $('backBtn').addEventListener('click', () =>
+      history.length > 1 ? history.back() : goto('index.html'));
+
+    $('copyBtn').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(messageText);
+        showToast('已複製到剪貼簿', 'success');
+      } catch {
+        // fallback：select 文字讓使用者手動複製
+        const r = document.createRange();
+        r.selectNodeContents($('preview'));
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(r);
+        showToast('請手動長按複製', 'error');
+      }
+    });
+
+    $('shareBtn').addEventListener('click', async () => {
+      try {
+        if (typeof liff === 'undefined' || !liff.isApiAvailable?.('shareTargetPicker')) {
+          throw new Error('此環境不支援分享，請改用複製');
+        }
+        await liff.shareTargetPicker([{ type: 'text', text: messageText }]);
+        showToast('已開啟分享選擇器', 'success');
+      } catch (e) {
+        showToast(e.message || '分享失敗', 'error');
+      }
+    });
+
+    $('paidBtn').addEventListener('click', async () => {
+      const ok = await showConfirmModal({
+        title: '標記為已付款？',
+        body: '此操作不可還原',
+        confirmText: '確認已付',
+        danger: true,
+      });
+      if (!ok) return;
+      try {
+        await apiPost(`/api/family-pay/monthly-claim/${claimId}/paid`);
+        showToast('✅ 已標記為已付款', 'success');
+        setTimeout(() => goto('index.html'), 800);
+      } catch (e) {
+        showToast(e.message || '標記失敗', 'error');
+      }
+    });
+
+    (async () => {
+      try {
+        await initLiff();
+        await loadClaim();
+      } catch (e) {
+        showToast(e.message || '初始化失敗', 'error');
+        console.error(e);
+      }
+    })();
+  </script>
+</body>
+</html>
