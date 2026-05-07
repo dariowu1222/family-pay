@@ -79,6 +79,10 @@
       $('nextBtn').disabled = (currentYM === currentMonth());
     }
 
+    const escapeHtml = (s) => String(s ?? '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
     function renderRecords(records) {
       const list = $('recordList');
       const empty = $('emptyState');
@@ -93,18 +97,30 @@
         const cat = CATEGORY_MAP[r.category] || { emoji: '❓', label: r.category };
         const pay = PAY_METHOD_MAP[r.pay_method] || { label: r.pay_method || '—' };
         const li = document.createElement('li');
-        li.className = 'card';
+        const hasNote = !!(r.note && r.note.trim());
+        li.className = 'card' + (hasNote ? ' has-note' : '');
+        if (hasNote) li.setAttribute('aria-expanded', 'false');
         const date = (r.record_date || '').slice(5, 10).replace('-', '/');
-        const note = r.note ? ` · 「${r.note}」` : '';
+        const toggle = hasNote ? '<span class="card-toggle" aria-hidden="true">▾</span>' : '';
+        const noteBlock = hasNote ? `<div class="card-note">${escapeHtml(r.note)}</div>` : '';
         li.innerHTML = `
           <div class="card-row">
             <span class="record-cat">${cat.emoji} ${cat.label}</span>
             <span class="record-amt">${formatNT(r.amount)}</span>
           </div>
-          <div class="card-meta">${date} · ${pay.label}${note}</div>`;
+          <div class="card-meta"><span>${date} · ${pay.label}</span>${toggle}</div>
+          ${noteBlock}`;
         list.appendChild(li);
       });
     }
+
+    // 點擊明細卡（有備註時）展開/收合
+    $('recordList').addEventListener('click', (e) => {
+      const card = e.target.closest('.card.has-note');
+      if (!card) return;
+      const expanded = card.classList.toggle('expanded');
+      card.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    });
 
     function renderChart(byCategory) {
       const ctx = $('chart').getContext('2d');

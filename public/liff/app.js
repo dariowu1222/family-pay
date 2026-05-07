@@ -202,7 +202,20 @@ a{color:inherit;text-decoration:none}
 .card{background:#fff;border:1px solid var(--color-border);border-radius:8px;
   padding:14px 16px;margin-bottom:8px}
 .card-row{display:flex;justify-content:space-between;align-items:center}
-.card-meta{font-size:13px;color:var(--color-text-muted);margin-top:4px}
+.card-meta{font-size:13px;color:var(--color-text-muted);margin-top:4px;
+  display:flex;justify-content:space-between;align-items:center;gap:8px}
+.card.has-note{cursor:pointer;user-select:none;
+  -webkit-tap-highlight-color:rgba(6,199,85,.08)}
+.card.has-note:active{background:var(--color-bg-muted)}
+.card-toggle{color:var(--color-text-muted);font-size:12px;line-height:1;
+  flex-shrink:0;transition:transform .2s ease}
+.card.expanded .card-toggle{transform:rotate(180deg)}
+.card-note{max-height:0;opacity:0;overflow:hidden;margin-top:0;padding-top:0;
+  border-top:1px dashed transparent;
+  transition:max-height .25s ease,opacity .2s ease,margin-top .25s ease,padding-top .25s ease,border-color .2s ease;
+  font-size:14px;color:var(--color-text);white-space:pre-wrap;word-break:break-word}
+.card.expanded .card-note{max-height:240px;opacity:1;margin-top:8px;padding-top:8px;
+  border-top-color:var(--color-border)}
 
 /* 輸入框 */
 .input{width:100%;padding:12px 14px;border:1px solid var(--color-border);
