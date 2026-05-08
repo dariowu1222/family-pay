@@ -165,6 +165,13 @@ router.get('/monthly-summary', async (req, res) => {
 // -----------------------------------------------------------------
 // 4. POST /claim-message — 產生請款訊息文字 + 寫入 monthly_claim
 // body: { month: 'YYYY-MM' }
+//
+// 【2026-05-08 idempotent 修復】
+// 原邏輯：第一次呼叫即把 UNSETTLED → CLAIMED。第二次預覽抓不到 UNSETTLED → 回 400。
+// 新邏輯：
+//   - 若同月已有 SENT 的 monthly_claim → 純讀模式：用 claim_id 抓回原 records 重組訊息（不寫 DB）
+//   - 若同月無 claim 或 status=PAID → 照原推進流程（SENT + records 標 CLAIMED）
+// 達成 idempotent：不論第幾次呼叫，預覽訊息都會回完整內容
 // -----------------------------------------------------------------
 router.post('/claim-message', async (req, res) => {
   const client = await pool.connect();
@@ -176,9 +183,76 @@ router.post('/claim-message', async (req, res) => {
       return res.status(400).json({ ok: false, error: 'month 格式需為 YYYY-MM' });
     }
 
+    // 共用：把 records 組成顯示訊息
+    const buildMessage = (records, totalAmount) => {
+      const byCat = {};
+      for (const r of records) {
+        const key = r.category;
+        if (!byCat[key]) byCat[key] = 0;
+        byCat[key] += Number(r.amount);
+      }
+      const lines = [
+        `📊 ${month} 家庭代墊請款`,
+        `總計：NT$ ${totalAmount.toLocaleString()}`,
+        '',
+        '— 分類明細 —',
+      ];
+      Object.entries(byCat)
+        .sort((a, b) => b[1] - a[1])
+        .forEach(([cat, amt]) => {
+          const label = CATEGORY_LABELS[cat] || cat;
+          lines.push(`${label}：NT$ ${amt.toLocaleString()}`);
+        });
+      lines.push('', `共 ${records.length} 筆，請查收 🙏`);
+      return lines.join('\n');
+    };
+
+    // 先看同月是否已有 monthly_claim
+    const existingClaimRes = await client.query(
+      `SELECT claim_id, status, total_amount
+         FROM monthly_claim
+        WHERE group_id = $1 AND claim_month = $2`,
+      [group_id, month]
+    );
+    const existingClaim = existingClaimRes.rows[0];
+
+    // ─── 已有 SENT claim → 純讀模式（不寫 DB）───
+    if (existingClaim && existingClaim.status === 'SENT') {
+      const recordsRes = await client.query(
+        `SELECT record_id, amount, category, pay_method, record_date, note
+           FROM family_pay_record
+          WHERE group_id = $1
+            AND claim_id = $2
+          ORDER BY record_date ASC`,
+        [group_id, existingClaim.claim_id]
+      );
+      const records = recordsRes.rows;
+
+      // 邊界保護：claim 存在但找不到 records（極端例外）→ 回原 total
+      const total = records.length
+        ? records.reduce((s, r) => s + Number(r.amount), 0)
+        : Number(existingClaim.total_amount);
+
+      return res.json({
+        ok: true,
+        data: {
+          claim_id: existingClaim.claim_id,
+          month,
+          total_amount: total,
+          record_count: records.length,
+          message: records.length ? buildMessage(records, total) : `📊 ${month} 家庭代墊請款\n總計：NT$ ${total.toLocaleString()}\n（無明細）`,
+        },
+      });
+    }
+
+    // ─── 已 PAID → 不允許重複請款 ───
+    if (existingClaim && existingClaim.status === 'PAID') {
+      return res.status(400).json({ ok: false, error: '本月已結清，無法重複請款' });
+    }
+
+    // ─── 首次請款：抓 UNSETTLED → 建 claim → 標 CLAIMED ───
     await client.query('BEGIN');
 
-    // 抓本月所有「未結算」的紀錄（不含 PERSONAL）
     const recordsRes = await client.query(
       `SELECT record_id, amount, category, pay_method, record_date, note
          FROM family_pay_record
@@ -197,15 +271,7 @@ router.post('/claim-message', async (req, res) => {
 
     const total = records.reduce((s, r) => s + Number(r.amount), 0);
 
-    // 按分類彙總
-    const byCat = {};
-    for (const r of records) {
-      const key = r.category;
-      if (!byCat[key]) byCat[key] = 0;
-      byCat[key] += Number(r.amount);
-    }
-
-    // 建立 monthly_claim（同月已存在則 reuse）
+    // 建立 monthly_claim（同月已存在則 reuse；上面已 PAID 分支擋住，這裡只會是新建或舊 SENT）
     const claimRes = await client.query(
       `INSERT INTO monthly_claim (group_id, claim_month, total_amount, status, sent_at)
        VALUES ($1, $2, $3, 'SENT', NOW())
@@ -218,7 +284,6 @@ router.post('/claim-message', async (req, res) => {
     );
     const claim = claimRes.rows[0];
 
-    // 把 records 標為 CLAIMED + 關聯 claim_id
     await client.query(
       `UPDATE family_pay_record
           SET status = 'CLAIMED',
@@ -232,21 +297,6 @@ router.post('/claim-message', async (req, res) => {
 
     await client.query('COMMIT');
 
-    // 組訊息
-    const lines = [
-      `📊 ${month} 家庭代墊請款`,
-      `總計：NT$ ${total.toLocaleString()}`,
-      '',
-      '— 分類明細 —',
-    ];
-    Object.entries(byCat)
-      .sort((a, b) => b[1] - a[1])
-      .forEach(([cat, amt]) => {
-        const label = CATEGORY_LABELS[cat] || cat;
-        lines.push(`${label}：NT$ ${amt.toLocaleString()}`);
-      });
-    lines.push('', `共 ${records.length} 筆，請查收 🙏`);
-
     res.json({
       ok: true,
       data: {
@@ -254,7 +304,7 @@ router.post('/claim-message', async (req, res) => {
         month,
         total_amount: total,
         record_count: records.length,
-        message: lines.join('\n'),
+        message: buildMessage(records, total),
       },
     });
   } catch (err) {
