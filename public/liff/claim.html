@@ -88,8 +88,21 @@
 
     $('shareBtn').addEventListener('click', async () => {
       try {
-        if (typeof liff === 'undefined' || !liff.isApiAvailable?.('shareTargetPicker')) {
-          throw new Error('此環境不支援分享，請改用複製');
+        // 偵測：LIFF 已載入但 shareTargetPicker 不可用 → 通常是 chat_message.write scope 沒授權
+        if (typeof liff !== 'undefined' && !liff.isApiAvailable?.('shareTargetPicker')) {
+          const ok = await showConfirmModal({
+            title: '需要重新授權',
+            body: '「分享到 LINE」需要「以您的身分傳送訊息」權限。\n按下確認會重新登入並跳出授權頁。',
+            confirmText: '重新登入',
+          });
+          if (ok) {
+            liff.logout();
+            location.reload();
+          }
+          return;
+        }
+        if (typeof liff === 'undefined') {
+          throw new Error('LIFF 未載入');
         }
         await liff.shareTargetPicker([{ type: 'text', text: messageText }]);
         showToast('已開啟分享選擇器', 'success');
